@@ -55,3 +55,4 @@ ml/models/*.h5
 ml/export/check_windows.*
 __pycache__/
 *.pyc
+ml/export/
