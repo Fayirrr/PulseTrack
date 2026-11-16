@@ -47,3 +47,11 @@ dist/
 
 # System files
 .DS_Store
+# ML work (dataset, venv and Keras checkpoints are never committed)
+ml/data/
+ml/.venv/
+ml/models/*.keras
+ml/models/*.h5
+ml/export/check_windows.*
+__pycache__/
+*.pyc
