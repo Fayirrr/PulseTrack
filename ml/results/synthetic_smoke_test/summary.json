@@ -1,0 +1,24 @@
+{
+ "tag": "base",
+ "synthetic": true,
+ "macro_f1_mean": 0.9804980918165965,
+ "macro_f1_std": 0.0107195145942172,
+ "best_epochs": [
+  30,
+  43,
+  18,
+  15
+ ],
+ "args": {
+  "epochs": 60,
+  "batch": 64,
+  "width": 16,
+  "dropout": 0.25,
+  "lr": 0.001,
+  "no_specaug": false,
+  "tag": "base",
+  "smoke": false,
+  "skip_final": false
+ },
+ "n_params": 79700
+}

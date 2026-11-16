@@ -1,0 +1,18 @@
+{
+ "modelVersion": "crashcnn-SYNTHETIC-TEST-20261117",
+ "synthetic": true,
+ "roadDataset": "synthetic",
+ "classes": [
+  "background",
+  "crash",
+  "skid",
+  "loud_not_crash"
+ ],
+ "parameters": 79700,
+ "epochs": 26,
+ "trainWindows": 5028,
+ "tag": "base",
+ "width": 16,
+ "dropout": 0.25,
+ "note": "PLACEHOLDER trained on SYNTHETIC audio. Only for testing the code path. Not a crash detector."
+}
