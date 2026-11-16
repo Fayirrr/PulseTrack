@@ -349,6 +349,22 @@ export default function CommandCenter() {
                                 </div>
                             )}
 
+                            {/* Team trained crash sound CNN result (runs on the victim phone, separate from Gemini) */}
+                            {user.cnnLabel && (
+                                <div className="ml-2 mt-1 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 flex justify-between items-center gap-2">
+                                    <div>
+                                        <div className="text-[9px] font-bold text-indigo-400 uppercase">Team CNN (audio)</div>
+                                        <div className="text-sm font-bold text-indigo-900">
+                                            {user.cnnLabel}
+                                            {typeof user.cnnConfidence === 'number' && ` ${(user.cnnConfidence * 100).toFixed(0)}%`}
+                                        </div>
+                                    </div>
+                                    <div className="text-[9px] font-mono text-indigo-400 text-right break-all">
+                                        {/SYNTHETIC/i.test(user.modelVersion || "") ? "TEST MODEL" : (user.modelVersion || "")}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* CCAI Assessment Box */}
                             <div className="bg-slate-800 p-3 rounded-lg text-white ml-2 shadow-inner mt-1">
                                 <p className="text-xs font-medium leading-relaxed">
