@@ -1,8 +1,8 @@
 # Morning summary
 
-**PR link: none. The pull request was NOT sent.** The GitHub CLI (`gh`) is still not installed
-on this laptop, so step 3a stopped there. Everything is committed on the local branch
-`ml-crash-cnn`; nothing was pushed. Commands to send it are in section 5.
+**PR link: https://github.com/Fayirrr/PulseTrack/pull/1** (opened from the fork
+MohammedZaid-AI/PulseTrack, branch `ml-crash-cnn`, after the real model was trained).
+The notes below were written before training; real numbers are in `ml/results/RESULTS.md`.
 
 (Second run, 2026-11-18. MIVIA replaced by Freesound + UrbanSound8K + ESC-50.)
 
