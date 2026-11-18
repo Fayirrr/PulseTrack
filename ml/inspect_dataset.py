@@ -1,8 +1,8 @@
 """Phase 1: look at what is really on disk. Prints facts only, guesses nothing.
 
 Run:  ml\\.venv\\Scripts\\python.exe ml\\inspect_dataset.py [folder]
-Default folder is ml/data/MIVIA_ROAD_DB1. Also works on SYNTHETIC_ROAD and ESC50.
-Paste the output into ml/DATASET.md when the real MIVIA data has been downloaded.
+Default folder is ml/data. Works on any folder (UrbanSound8K, ESC50, freesound_crash, ...).
+Prints facts from the files on disk; use it to check ml/DATASET.md.
 """
 import collections
 import os
@@ -16,7 +16,7 @@ import config as C  # noqa: E402
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else C.MIVIA_DIR
+    root = sys.argv[1] if len(sys.argv) > 1 else C.DATA_DIR
     if not os.path.isdir(root):
         print(f"Folder not found: {root}")
         return 1

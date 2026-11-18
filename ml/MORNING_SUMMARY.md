@@ -1,86 +1,81 @@
 # Morning summary
 
-**PR link: none. The pull request was NOT sent.** The GitHub CLI (`gh`) is not installed on
-this laptop, so step 3a stopped there. Everything is committed on the local branch
-`ml-crash-cnn`, nothing was pushed. The commands to send it are in section 5.
+**PR link: none. The pull request was NOT sent.** The GitHub CLI (`gh`) is still not installed
+on this laptop, so step 3a stopped there. Everything is committed on the local branch
+`ml-crash-cnn`; nothing was pushed. Commands to send it are in section 5.
+
+(Second run, 2026-11-18. MIVIA replaced by Freesound + UrbanSound8K + ESC-50.)
 
 ## 1. The short version
 
-* **The real model was not trained.** MIVIA could not be downloaded: the site needs a
-  registered account, login and a captcha (not bypassed), and the site was also down all night.
-  No other open dataset with properly labelled crash and skid audio was found.
-* **All the code is written and tested end to end** on SYNTHETIC road audio (noise and beeps
-  made by a script) plus real ESC-50 clips.
-* **There are no real numbers.** `ml/results/RESULTS.md` is empty on purpose. Do not use
-  anything from `ml/results/synthetic_smoke_test/` in the report or in front of the professor.
-* The app builds and the new code runs in Chrome. The model in `public/model/` is a
-  **placeholder**. The app shows it as "TEST MODEL" and does not let it start alarms; the old
-  loudness rule stays in charge until a real model is trained.
+* **`freesound_key.txt` was empty (0 bytes) the whole night.** It was open in your editor, so
+  maybe it was never saved. Without the key, no crash or skid audio could be downloaded.
+* So **the real model was not trained** and there are **no real numbers**.
+  `ml/results/RESULTS.md` says so and is empty on purpose.
+* **UrbanSound8K is downloaded** (6 GB from Kaggle) and **ESC-50 is on disk**. Both are cut into
+  17,046 windows in 4 leak free folds (exactly 25 percent of each class per fold). Real counts
+  are in `ml/DATASET.md`.
+* Every script is ready. **Once the key is saved, one command does the rest** (section 3).
+* The app still builds and works with the placeholder model ("TEST MODEL", cannot start alarms).
 
 ## 2. What is done
 
-| phase | state |
+| step | state |
 |---|---|
-| Setup (branch, Python 3.10 venv, packages, .gitignore) | done |
-| 0 Data | MIVIA **not obtained**. ESC-50 downloaded. Synthetic stand in made. |
-| 1 Inspect | done for ESC-50 and synthetic. MIVIA section of `DATASET.md` is from the web page only. |
-| 2 Windows | `prepare_data.py` works (5028 windows from synthetic + ESC-50). Not tried on real MIVIA files. |
-| 3 Features | done, shape test passes, `public/model/mel.json` written |
-| 4 Train | code done and run on synthetic data. **Real training skipped.** "3 improvements" step not run. |
-| 5 Export | done. Keras vs TensorFlow.js max difference 1.192e-07 (limit 1e-3). |
-| 6 App | done. Build passes. Lint: same 22 errors + 3 warnings as before, none new. |
-| 7 Phone test tool | done, tested on wav, mp3, m4a, webm |
-| 8 Report text | done, results sections left empty |
+| kaggle.json / freesound_key.txt in .gitignore | done, first commit of this run |
+| UrbanSound8K | done. The kaggle CLI failed (certificate check, then held 6 GB in memory), replaced by `ml/kaggle_download.py` |
+| Freesound crash / skid | **not done: key file empty.** `ml/freesound_download.py` written, filters tested offline |
+| ESC-50 | done (already there from the first run) |
+| Phase 1 labelled set + `DATASET.md` | done for UrbanSound8K + ESC-50, crash/skid pending |
+| Phase 2 windows | done for those (17,046 windows), leakage check passed |
+| Phase 3 features | unchanged from first run, shape test passes |
+| Phase 4 training | code updated (highlighted loud_not_crash false alarms, per source table). **Real training skipped.** "3 improvements" step not run |
+| Phase 5 export | unchanged, placeholder model, check passed (max diff 1.192e-07) |
+| Phase 6 app | unchanged from first run. Build passes, no new lint errors |
+| Phase 7 phone test tool | unchanged, works with wav, mp3, m4a, webm |
+| Phase 8 report text | rewritten for the new datasets, results sections left empty |
 | PR | **not sent**, `gh` missing |
 
-Tested in headless Chrome with a fake microphone: live labels on the Audio Pulse card every
-0.5 s, countdown after 2 crash windows in a row when the model is marked real, Cancel works,
-"AI model offline" when the model file is blocked. **Not tested:** a real phone, a real
-Firestore alert, the new box in the Command Center with a real alert.
+Details: `ml/PROGRESS.md`, `ml/DECISIONS.md` (points 38 to 55 are from this run).
 
-More detail: `ml/PROGRESS.md` (what worked and failed), `ml/DECISIONS.md` (37 choices I made).
+## 3. What you must do by hand
 
-## 3. Data I must download
-
-MIVIA Road Audio Events, by hand:
-
-1. Open https://mivia.unisa.it/datasets/audio-analysis/mivia-road-audio-events-data-set/
-   (if the site does not open, try later or from mobile data; it reset every connection during
-   the night).
-2. Click "Registrati" (Register) and make an account. Confirm by email if asked.
-3. Log in, then open https://mivia.unisa.it/datasets-request/
-4. In "Select the dataset you want to download" choose **MIVIA ROAD audio events data set** and
-   download it. If there is no download after login, write to mivia@unisa.it from your college
-   email and say it is for a final year project.
-5. Read the terms shown on the site and note them in `ml/DATASET.md` (the page I could read
-   shows no licence text, only the papers to cite).
-6. Unzip so that the wav and xml files are somewhere under `ml\data\MIVIA_ROAD_DB1\`.
-
-Then run, from `d:\Zaids Work\PulseTrack`:
+1. **Save the Freesound key.** Get it at https://freesound.org/apiv2/apply (log in, "Create new
+   API credentials"; use the long "Client secret / API key" value). Paste it as the only line
+   of `freesound_key.txt` in the repo root and **save** the file (Ctrl+S).
+2. **Run the whole pipeline** from `d:\Zaids Work\PulseTrack`:
 
 ```powershell
-ml\.venv\Scripts\python.exe ml\inspect_dataset.py
-ml\.venv\Scripts\python.exe ml\prepare_data.py --dataset mivia
+powershell -ExecutionPolicy Bypass -File ml\run_pipeline.ps1
+```
+
+   It downloads the Freesound clips, builds the windows, trains (4 folds + final model),
+   exports to TensorFlow.js, checks Keras vs TensorFlow.js, and builds the app. It stops at the
+   first error. Training should fit in under 2 hours on this CPU (17,046 windows now, plus the crash and skid windows).
+
+   The same steps one by one:
+
+```powershell
+ml\.venv\Scripts\python.exe ml\freesound_download.py
+ml\.venv\Scripts\python.exe ml\prepare_data.py
 ml\.venv\Scripts\python.exe ml\train.py
 ml\.venv\Scripts\python.exe ml\export_tfjs.py
 ml\.venv\Scripts\python.exe ml\check_export.py
 npm run build
 ```
 
-Things that may need a small fix at step 2, because I never saw the real files:
-
-* **Fold folders.** The script looks for `fold1` .. `fold4` in the path. If the real folders
-  are named differently, pass for example `--fold-regex "/([A-D])/"`. The script stops and
-  shows the paths if it cannot find a fold.
-* **Class ids.** If the XML has no class name, the script assumes id 3 = crash and id 2 = skid
-  (from someone else's script on GitHub, not verified). Check the "EVENTS BY" lines printed by
-  `inspect_dataset.py`. The script stops if it sees an id it does not know.
-
-Training will probably take under an hour on this laptop CPU (the synthetic test run took about 20 minutes). `train.py` then writes the real
-`ml/results/RESULTS.md` and figures, and the exported model is marked as real, so the CNN
-trigger in the app turns on by itself. If macro F1 is weak, try for example
-`ml\.venv\Scripts\python.exe ml\train.py --tag wide --width 24 --skip-final` and compare.
-After that fill sections 2, 3, 6, 7 of `ml/REPORT_SECTION.md` and update the PR text.
+3. **Check what came back.** `freesound_download.py` prints how many crash and skid clips passed
+   the licence and keyword filters; the task asks for at least 48 of each. If there are fewer,
+   note the real number in `ml/DATASET.md`. Listening to a few files in `ml\data\freesound_crash`
+   is a good idea: labels are the uploaders' own tags.
+4. **If macro F1 is weak**, try at most 3 variants and keep the best, for example
+   `ml\.venv\Scripts\python.exe ml\train.py --tag wide --width 24 --skip-final`.
+   Each writes `ml\results\variant_<tag>\`. Then train the final model with the best settings.
+5. **Fill the report**: sections 2.1, 3 (table), 6 and 7 of `ml/REPORT_SECTION.md`, and copy
+   the CC BY authors from `ml/freesound_sources.csv` into an appendix.
+6. **Commit** (`ml/freesound_sources.csv`, `ml/results/`, `public/model/` change; data does not):
+   `git add -A` then `git status` and make sure no `ml/data`, `kaggle.json` or
+   `freesound_key.txt` appear, then commit.
 
 ## 4. Commands
 
@@ -93,42 +88,32 @@ npm run dev
 ```
 
 Vite prints a `Network: https://192.168.x.x:5173/` address. Open it on the phone (same Wi-Fi),
-accept the certificate warning, press "Initialize Tracking Sensors" and allow mic and camera.
-Note: there is no `.env` file in this folder. Firebase and Gemini need the `VITE_FIREBASE_...`
-and `VITE_GEMINI_API_KEY` values in `.env` to send and show alerts.
+accept the certificate warning, press "Initialize Tracking Sensors", allow mic and camera.
+There is no `.env` file in this folder; Firebase and Gemini need the `VITE_FIREBASE_...` and
+`VITE_GEMINI_API_KEY` values in `.env` to send and show alerts.
 
-Phone test (put recordings in one folder, names like `crash_01.m4a`, `loud_door.mp3`):
+Phone test (a folder of your own recordings, names like `crash_01.m4a`, `loud_door.mp3`):
 
 ```powershell
 ml\.venv\Scripts\python.exe ml\phone_test.py "C:\path\to\my_recordings"
 ```
 
-**ffmpeg is needed** for mp3, m4a and webm (wav and flac work without it). It is already
-installed on this laptop. With the placeholder model the output means nothing; use it after
-real training.
-
-Other checks:
-
-```powershell
-ml\.venv\Scripts\python.exe ml\features.py       # feature shape test
-node ml\sim_detector.mjs                         # browser detector simulated in Node
-```
-
-If you ever rebuild the venv: Python 3.10, then install as described in `DECISIONS.md` points
-4 to 6 (tensorflow 2.15.1, tensorflowjs with `--no-deps`).
+wav and flac work directly; mp3, m4a, webm, ogg need ffmpeg, which is already installed on this
+laptop. With the placeholder model the output means nothing; use it after real training.
 
 ## 5. Send the PR (ready, just not sent)
+
+Best after step 3 above, so the PR has real results. To send it now as a draft:
 
 ```powershell
 winget install --id GitHub.cli
 # close and reopen the terminal, then:
 gh auth login
-gh auth status
 cd "d:\Zaids Work\PulseTrack"
 gh api repos/Fayirrr/PulseTrack --jq .permissions.push
 ```
 
-If the last command prints `true` (you can push to your friend's repo):
+If that prints `true`:
 
 ```powershell
 git push -u origin ml-crash-cnn
@@ -144,23 +129,17 @@ git push -u origin ml-crash-cnn
 gh pr create --repo Fayirrr/PulseTrack --base main --head YOUR_GITHUB_USERNAME:ml-crash-cnn --draft --title "Add team trained CNN for crash sound detection" --body-file ml/PR_BODY.md
 ```
 
-(After the fork command your fork is `origin` and your friend's repo is `upstream`; check with
-`git remote -v` and push to the one that is your fork.)
-
-It is a **draft** PR because training was skipped; the reason is at the top of
-`ml/PR_BODY.md`. After real training, update the body with the results table and run
+(After the fork command your fork is `origin` and your friend's repo is `upstream`.)
+After real training, put the results table from `RESULTS.md` into `ml/PR_BODY.md`, remove the
+draft note at the top, update the PR (`gh pr edit --body-file ml/PR_BODY.md`) and run
 `gh pr ready`. Put the PR link at the top of this file.
 
-## 6. Things to know before the demo
+## 6. Things to know
 
-* Nothing here proves crash detection yet. Tell the professor honestly that the pipeline is
-  built and the dataset access is pending, or train first.
-* `PulseTrack_Claude_Context_Brief.pdf` was left out of git on purpose: it has the team's names
-  and roll numbers and the repo is public. Add it yourself if you want it there.
-* `package-lock.json` already had an uncommitted change before I started (vite `^8.3.5` to
-  `^8.3.4`). It went into the commit together with the TensorFlow.js install.
-* Suggestion, not done: the mic is opened with `audio: true`, so the browser applies echo
-  cancellation, noise suppression and auto gain. These can soften a crash sound. Consider
-  turning them off in `getUserMedia` and test on a phone.
-* I checked git before every commit: no dataset files, no venv, no `.env`, no keys are staged
-  or committed.
+* Do not show anything from `ml/results/synthetic_smoke_test/` as a result; it is fake audio.
+* There are other key files in your Downloads folder; I did not open them.
+* UrbanSound8K and ESC-50 are non commercial (CC BY-NC). Fine for the project, cite both.
+* `PulseTrack_Claude_Context_Brief.pdf` is still left out of git (names and roll numbers,
+  public repo).
+* I checked git before committing: no dataset files, no venv, no `.env`, no `kaggle.json`,
+  no `freesound_key.txt` are staged or committed.

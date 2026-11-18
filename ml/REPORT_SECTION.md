@@ -1,9 +1,11 @@
 # Report section: Team trained CNN for crash sound detection
 
 > **Read this first.** The method, the code and the app integration described here are finished
-> and tested. The **results tables are empty** because the real dataset (MIVIA) could not be
-> downloaded yet. Fill sections 6 and 7 from `ml/results/RESULTS.md` after training on the real
-> data. Do not put any number from `ml/results/synthetic_smoke_test/` in the report.
+> and tested. The **results tables are empty** because the crash and skid sounds (from
+> Freesound) have not been downloaded yet: the Freesound API key file was empty. Fill sections
+> 2.1, 6 and 7 from `ml/freesound_sources.csv`, `ml/results/window_counts.md` and
+> `ml/results/RESULTS.md` after running `ml\run_pipeline.ps1`. Do not put any number from
+> `ml/results/synthetic_smoke_test/` in the report.
 
 ## 1. Why this component was added
 
@@ -15,8 +17,6 @@ Our guide asked for an AI model that the team trains itself. So we added a small
 Neural Network (CNN) that listens to the phone microphone and classifies the sound as crash,
 tire skid, background, or loud but not a crash. This CNN is **trained by the team** with our
 own code (`ml/`), runs inside the browser on the phone, and needs no server.
-
-The two AI parts do different jobs and both stay in the system:
 
 | | Gemini triage | Crash sound CNN |
 |---|---|---|
@@ -30,50 +30,73 @@ Before this work the audio trigger was a simple loudness rule: if the average lo
 above a threshold (default 85), the countdown started. Any loud sound, such as a door slam or
 fireworks, could start it. The CNN is meant to tell a crash apart from other loud sounds.
 
-## 2. Dataset
+## 2. Datasets
 
-**Planned training data: MIVIA Road Audio Events** (University of Salerno). According to the
-official dataset page it has 400 events (200 car crashes and 200 tire skids) mixed into road
-background sound, in audio files of about one minute, 32 kHz, 16 bit, WAV, split into 4 folds
-for cross validation. The page lists 326.38 s of crash sound, 522.5 s of skid sound and 2732 s
-of background.
+We combine three openly available sources. No audio from them is stored in our code repository.
 
-* Access: free for registered users of the MIVIA lab site. The page does not print a licence;
-  it asks users to cite the papers below. *[Confirm the terms on the site when you download.]*
-* Citations:
-  * P. Foggia, N. Petkov, A. Saggese, N. Strisciuglio, M. Vento, "Reliable detection of audio
-    events in highly noisy environments", Pattern Recognition Letters, 2015.
-  * P. Foggia, N. Petkov, A. Saggese, N. Strisciuglio, M. Vento, "Audio surveillance of roads:
-    a system for detecting anomalous sounds", IEEE Transactions on Intelligent Transportation
-    Systems.
+| class | source | what we use |
+|---|---|---|
+| crash | Freesound | car crash recordings, CC0 or CC BY only |
+| skid | Freesound | tire skid recordings, CC0 or CC BY only |
+| background | UrbanSound8K | engine idling, street music, air conditioner, drilling, children playing, jackhammer |
+| loud_not_crash | ESC-50 + UrbanSound8K | door knock, glass breaking, fireworks, car horn, siren, dog, clapping, can opening, thunderstorm (ESC-50); car horn, siren, gun shot (UrbanSound8K) |
 
-*[These numbers are quoted from the dataset page. Replace them with the counts printed by
-`ml/inspect_dataset.py` once the files are on disk.]*
+### 2.1 Freesound (crash and skid)
 
-**Extra class: ESC-50.** MIVIA has no "other loud sound" examples, so we added a fourth class,
-`loud_not_crash`, from the ESC-50 dataset. We used 10 of its 50 classes: door knock, door
-creak, glass breaking, fireworks, car horn, siren, clapping, dog, thunderstorm and can opening.
-That is 400 clips of 5 seconds at 44.1 kHz (40 per class).
+Freesound (freesound.org) is an open website where people upload sound recordings. We searched
+it through its official API for "car crash", "car crash skid", "car collision", "vehicle
+crash", "tire skid" and a few similar words. We kept only sounds under 30 seconds with a
+Creative Commons 0 or Creative Commons Attribution licence, removed obvious wrong results
+(crash cymbals, music, computer crashes, game sounds) with keyword rules, and downloaded the
+preview audio.
 
-* Licence: Creative Commons Attribution-NonCommercial (CC BY-NC 3.0).
+*[Fill in after download: number of crash and skid clips, total duration, number of
+uploaders. Every clip's id, link, licence and author is in `ml/freesound_sources.csv`. For the
+CC BY clips, list the authors and links in an appendix, as the licence requires.]*
+
+* Licence: per clip, CC0 1.0 or CC BY 3.0 / 4.0.
+* Citation: F. Font, G. Roma, X. Serra, "Freesound technical demo", Proceedings of the 21st
+  ACM International Conference on Multimedia, 2013.
+
+### 2.2 UrbanSound8K (background and some loud sounds)
+
+8732 labelled sound excerpts of 4 seconds or less from 10 urban sound classes, all taken from
+field recordings on Freesound. We used 6000 excerpts for background (1000 each of engine
+idling, street music, air conditioner, drilling, children playing, jackhammer) and 1732 for
+loud_not_crash (429 car horn, 929 siren, 374 gun shot). They come from 960 different original
+recordings and have many sample rates (8 kHz to 192 kHz), which we convert to 16 kHz.
+
+* Licence: Creative Commons Attribution-NonCommercial 4.0 (as listed on the Kaggle copy we
+  downloaded, `chrisfilo/urbansound8k`). *[Confirm on the authors' site.]*
+* Citation: J. Salamon, C. Jacoby, J. P. Bello, "A Dataset and Taxonomy for Urban Sound
+  Research", 22nd ACM International Conference on Multimedia, Orlando, USA, 2014.
+
+### 2.3 ESC-50 (loud sounds that are not crashes)
+
+2000 environmental recordings of 5 seconds in 50 classes. We used 9 classes with 40 clips
+each, 360 clips: door knock, glass breaking, fireworks, car horn, siren, dog, clapping, can
+opening, thunderstorm.
+
+* Licence: Creative Commons Attribution-NonCommercial 3.0.
 * Citation: K. J. Piczak, "ESC: Dataset for Environmental Sound Classification", Proceedings
-  of the 23rd ACM International Conference on Multimedia, 2015.
-
-No audio from either dataset is stored in our code repository.
+  of the 23rd ACM International Conference on Multimedia, 2015, pp. 1015-1018.
 
 ## 3. Preprocessing
 
 All steps are in `ml/prepare_data.py` and `ml/features.py`.
 
-1. Every file is converted to 16 kHz mono.
-2. The audio is cut into windows of 1 second with a hop of 0.5 seconds.
-3. Labels: a window is `crash` or `skid` if more than 50 percent of it lies inside an annotated
-   event. A window with no event at all is `background`. Windows that touch an event by 50
-   percent or less are left out because their label is unclear.
-4. Every window keeps the fold number of its source file, so cross validation never mixes
-   windows of one recording between train and test.
-5. ESC-50 clips become `loud_not_crash`. Its 5 folds are mapped into 4 groups and each original
-   clip stays in one group. Windows that are almost silent (padding) are left out.
+1. Every file is converted to 16 kHz mono. Clips shorter than 1 second are padded with silence.
+2. The audio is cut into windows of 1 second with a hop of 0.5 seconds. Every window gets the
+   class of its clip.
+3. For crash, skid and loud sounds, windows that are almost silent (quieter than 10 percent of
+   the loudest window of the same clip) are left out, because an uploaded "car crash" file
+   often has silence before and after the impact.
+4. To keep the classes from being too unequal, each clip gives at most 2 background windows,
+   3 loud_not_crash windows, or 20 crash or skid windows.
+5. **4 folds without leakage.** All windows of one clip stay in the same fold. Clips that come
+   from the same original Freesound recording, or (for crash and skid) from the same uploader,
+   are kept together in one fold. The folds are filled so each gets about a quarter of every
+   class. The script checks this and stops if any clip appears in two folds.
 6. Each window becomes a **log Mel spectrogram**:
 
 | setting | value |
@@ -90,7 +113,17 @@ The spectrogram is computed with `tf.signal` in Python for training and with `tf
 TensorFlow.js in the browser. Both sides read the same Mel matrix from
 `public/model/mel.json`, so the phone computes the same features the model was trained on.
 
-*[Add the real table of windows per class per fold from `ml/results/window_counts.md`.]*
+Windows per class per fold, for the parts already downloaded (printed by `prepare_data.py`):
+
+| class | fold 1 | fold 2 | fold 3 | fold 4 | total |
+|---|---|---|---|---|---|
+| background | 2955 | 2955 | 2954 | 2954 | 11818 |
+| crash | *[pending]* | | | | |
+| skid | *[pending]* | | | | |
+| loud_not_crash | 1307 | 1307 | 1307 | 1307 | 5228 |
+
+*[Replace with the full table from `ml/results/window_counts.md` after the Freesound download;
+the numbers above change slightly when crash and skid groups are added.]*
 
 ## 4. Model architecture
 
@@ -119,44 +152,44 @@ The model file is about 0.3 MB, small enough to download and run on a phone.
 
 ## 5. Training setup
 
-* 4 fold cross validation on the dataset folds: train on 3 folds, test on the fourth, repeat.
-* 15 percent of the training folds, split by recording, is held out as a validation set.
+* 4 fold cross validation on the folds above: train on 3 folds, test on the fourth, repeat.
+* 15 percent of the training folds, split by source, is held out as a validation set.
 * Optimiser Adam, learning rate 0.001, halved when the validation loss stops improving.
   Batch size 64, at most 60 epochs, early stopping after 8 epochs without improvement.
 * Class weights, because background windows are far more common than crash windows.
 * Augmentation on training data only: random gain (plus or minus 6 dB), random time shift (up
   to 0.1 s), mixing with a background window from the training folds, and SpecAugment (one
   time mask and one frequency mask).
-* Baseline for comparison: the old loudness rule of the app, with its threshold tuned on the
-  training folds only and tested on the same test windows.
+* Baseline for comparison: the old loudness rule of the app, copied in Python, with its
+  threshold tuned on the training folds only and tested on the same test windows.
 * The final model for the app is trained on all folds and converted to TensorFlow.js.
 * Software: Python 3.10, TensorFlow 2.15.1, trained on a laptop CPU.
 
 ## 6. Results
 
-**Not available yet.** *[Copy the tables from `ml/results/RESULTS.md` after training on MIVIA:
-accuracy, per class precision, recall and F1, macro F1 and crash recall, each as mean and
-standard deviation over the 4 folds.]*
+**Not available yet.** *[Copy the tables from `ml/results/RESULTS.md`: accuracy, per class
+precision, recall and F1, macro F1 and crash recall, each as mean and standard deviation over
+the 4 folds.]*
 
 ## 7. Comparison with the loudness rule
 
-**Not available yet.** *[Copy the "CNN vs loudness rule" table from `ml/results/RESULTS.md`,
-including the false alarm rate on `loud_not_crash` for both methods.]*
+**Not available yet.** *[Copy the "CNN vs loudness rule" table and the "Key point: false
+alarms on loud sounds that are not crashes" section from `ml/results/RESULTS.md`.]*
 
-What can be said now without numbers: the loudness rule looks at one value, how loud the sound
-is, so it cannot tell a crash from any other loud sound. The CNN looks at how the energy is
-spread over frequency and time.
+The point to make: the loudness rule looks at one value, how loud the sound is, so a door
+knock, fireworks or a siren can look exactly like a crash to it. The `loud_not_crash` class
+exists to measure this. `RESULTS.md` reports the fraction of these windows on which each method
+would raise a crash alarm, for each source separately.
 
 ## 8. Figures
 
-Created by `ml/train.py` for every fold. *[These files appear in `ml/results/` after real
-training. Figures inside `ml/results/synthetic_smoke_test/` are from fake data, do not use
-them.]*
+Created by `ml/train.py` for every fold. *[These appear in `ml/results/` after real training.
+Figures in `ml/results/synthetic_smoke_test/` are from fake data, do not use them.]*
 
 | figure | file |
 |---|---|
-| Confusion matrix, fold 1 to 4 | `ml/results/fold1_confusion.png` ... `ml/results/fold4_confusion.png` |
-| Training and validation loss and accuracy, fold 1 to 4 | `ml/results/fold1_curves.png` ... `ml/results/fold4_curves.png` |
+| Confusion matrix, folds 1 to 4 | `ml/results/fold1_confusion.png` ... `ml/results/fold4_confusion.png` |
+| Training and validation loss and accuracy, folds 1 to 4 | `ml/results/fold1_curves.png` ... `ml/results/fold4_curves.png` |
 
 ## 9. How the model fits into the app
 
@@ -175,29 +208,35 @@ them.]*
 6. The alert sent to Firebase contains `cnnLabel`, `cnnConfidence` and `modelVersion`. The
    Command Center shows this next to the Gemini assessment.
 
-Flow: microphone → 1 second window → log Mel spectrogram → CNN → crash probability → combine
-with repeat check or motion → 15 second cancel countdown → Survival Mode and alert → Command
-Center (Gemini triage).
+Flow: microphone → 1 second window → log Mel spectrogram → CNN → crash probability → repeat
+check or motion check → 15 second cancel countdown → Survival Mode and alert → Command Center
+(Gemini triage).
 
 `ml/check_export.py` confirms that the Keras model and the TensorFlow.js model give the same
 probabilities for the same audio (difference below 0.001).
 
 ## 10. Limitations
 
-* **Different microphones.** MIVIA was recorded with fixed roadside surveillance microphones.
-  PulseTrack uses a phone microphone, often inside a car or a pocket. The sound that reaches
-  the phone is different (cabin, distance, cheap microphone, automatic gain and noise
-  suppression in the browser). This is called domain shift and the scores from MIVIA will not
-  carry over fully. `ml/phone_test.py` measures this on our own recordings.
-* **Mixed events.** MIVIA events are mixed into background sound by the dataset authors. Real
-  crashes on a real road may sound different.
-* **Other loud sounds.** We added 10 kinds of loud sounds from ESC-50, but the world has many
-  more (construction, a dropped metal sheet, a burst tyre, a truck tailgate). Some will still
-  be mistaken for a crash.
+* **Not phone recordings of real crashes.** The crash and skid clips are crowd sourced uploads:
+  sound effects, film foley, test recordings, made with many different microphones. They are
+  not recordings from a phone inside a car during a real accident. A phone in a pocket or on a
+  dashboard hears something different (cabin, distance, a small microphone, automatic gain and
+  noise suppression in the browser). This is called domain shift, so the scores from the test
+  folds will not fully carry over. `ml/phone_test.py` measures this on our own recordings.
+* **Several sources, no single controlled setup.** The four classes come from three datasets
+  recorded in different ways. The model could partly learn *which dataset* a sound comes from
+  (for example its recording quality) instead of *what* the sound is. Mixing background into
+  the other classes during training reduces this but does not remove it.
+* **Labels come from uploaders.** Freesound labels are the uploader's own title and tags. We
+  removed obvious mistakes with keyword rules but did not listen to every clip.
+* **Few crash examples.** Freesound has a limited number of openly licensed crash and skid
+  recordings, far fewer than background sounds. Class weights and augmentation help but the
+  crash class stays small.
+* **Other loud sounds.** We test on 12 kinds of loud sounds, but the world has many more
+  (construction, a dropped metal sheet, a burst tyre). Some will still be mistaken for a crash.
+  drilling and jackhammer are counted as background, although they are loud.
 * **A crash sound is not proof of a crash.** A crash played from a video or a speaker sounds
   like a crash. This is why the app keeps the cancel countdown and combines audio with motion.
-* **Small dataset.** 200 crashes and 200 skids is small for deep learning. We use 4 fold cross
-  validation, augmentation and a small model to limit overfitting.
 * **Resampling.** The browser converts audio to 16 kHz with its own simple filter, which is
   not identical to the one used in training.
 * **Testing.** All demos use crash audio played from a speaker. No real crash is staged.

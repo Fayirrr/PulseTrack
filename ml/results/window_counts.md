@@ -1,0 +1,36 @@
+Printed by ml/prepare_data.py
+
+## Per source
+
+| source | clips read | total seconds | original sample rates (Hz: clips) | windows kept |
+|---|---|---|---|---|
+| esc50_can_opening | 40 | 200.0 | 44100: 40 | 107 |
+| esc50_car_horn | 40 | 200.0 | 44100: 40 | 114 |
+| esc50_clapping | 40 | 200.0 | 44100: 40 | 120 |
+| esc50_dog | 40 | 200.0 | 44100: 40 | 112 |
+| esc50_door_wood_knock | 40 | 200.0 | 44100: 40 | 107 |
+| esc50_fireworks | 40 | 200.0 | 44100: 40 | 119 |
+| esc50_glass_breaking | 40 | 200.0 | 44100: 40 | 85 |
+| esc50_siren | 40 | 200.0 | 44100: 40 | 120 |
+| esc50_thunderstorm | 40 | 200.0 | 44100: 40 | 120 |
+| us8k_air_conditioner | 1000 | 3994.9 | 44100: 675, 48000: 325 | 2000 |
+| us8k_car_horn | 429 | 1053.7 | 16000: 21, 44100: 288, 48000: 105, 96000: 15 | 913 |
+| us8k_children_playing | 1000 | 3962.1 | 11024: 7, 11025: 8, 22050: 7, 44100: 590, 48000: 372, 96000: 16 | 1996 |
+| us8k_drilling | 1000 | 3546.3 | 16000: 6, 22050: 25, 24000: 28, 44100: 700, 48000: 122, 96000: 102, 192000: 17 | 1904 |
+| us8k_engine_idling | 1000 | 3936.0 | 44100: 523, 48000: 398, 96000: 79 | 1990 |
+| us8k_gun_shot | 374 | 616.2 | 22050: 2, 44100: 202, 48000: 113, 96000: 57 | 569 |
+| us8k_jackhammer | 1000 | 3610.7 | 44100: 543, 48000: 246, 96000: 211 | 1928 |
+| us8k_siren | 929 | 3632.7 | 11025: 9, 16000: 12, 44100: 506, 48000: 402 | 2742 |
+| us8k_street_music | 1000 | 4000.0 | 8000: 12, 16000: 6, 24000: 50, 44100: 686, 48000: 204, 96000: 42 | 2000 |
+
+## Windows per class per fold
+
+| class | fold 1 | fold 2 | fold 3 | fold 4 | total |
+|---|---|---|---|---|---|
+| background | 2955 | 2955 | 2954 | 2954 | 11818 (split 25% / 25% / 25% / 25%) |
+| crash | 0 | 0 | 0 | 0 | 0 (split 0% / 0% / 0% / 0%) |
+| skid | 0 | 0 | 0 | 0 | 0 (split 0% / 0% / 0% / 0%) |
+| loud_not_crash | 1307 | 1307 | 1307 | 1307 | 5228 (split 25% / 25% / 25% / 25%) |
+| all | 4262 | 4262 | 4261 | 4261 | 17046 |
+
+Other counts: {'windows_dropped_quiet': 1084, 'windows_dropped_cap': 5840}. Source groups: 1209.

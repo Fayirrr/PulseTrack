@@ -1,128 +1,137 @@
 # Datasets for the crash sound CNN
 
-Status on 2026-11-17: **the real MIVIA road dataset is NOT on this machine.**
-Everything below is split into what was checked on disk and what was only read on a web page.
+Updated 2026-11-18. MIVIA was dropped (it could not be reached or registered). The plan is now
+three open sources: Freesound for crash and skid, UrbanSound8K for background, ESC-50 and
+UrbanSound8K for loud sounds that are not crashes.
 
-## 1. MIVIA Road Audio Events (the planned training data): NOT DOWNLOADED
+**Status: crash and skid audio is NOT downloaded yet.** `freesound_key.txt` in the repo root was
+empty (0 bytes) during the whole run, so the Freesound API could not be called. Every number
+below was printed by the scripts from the files on disk.
 
-Why: the MIVIA site needs a registered account, login and a reCAPTCHA before it gives the
-download. That was not bypassed. During the run the live site `mivia.unisa.it` also reset every
-connection, so the facts below come from the Internet Archive copy of the official page
-(snapshot 2026-04-17 of
-`https://mivia.unisa.it/datasets/audio-analysis/mivia-road-audio-events-data-set/`).
+## Classes and where they come from
 
-What the official page says (read from the page, **not verified on the files**):
+| class | source | status |
+|---|---|---|
+| crash | Freesound, search "car crash", "car crash skid", "car collision", "vehicle crash" (+ "car accident", "car impact") | **0 clips, not downloaded (no API key)** |
+| skid | Freesound, search "tire skid" (+ "tyre skid", "tire screech", "car skid", "brake skid", "tires squeal") | **0 clips, not downloaded (no API key)** |
+| background | UrbanSound8K: engine_idling, street_music, air_conditioner, drilling, children_playing, jackhammer | 6000 clips, done |
+| loud_not_crash | ESC-50: door_wood_knock, glass_breaking, fireworks, car_horn, siren, dog, clapping, can_opening, thunderstorm. UrbanSound8K: car_horn, siren, gun_shot | 360 + 1732 clips, done |
 
-* 400 events for road surveillance: tire skidding and car crashes
-* 4 folds of 100 events each, made for cross validation
-* recorded with an Axis P8221 Audio Module and an Axis T83 omnidirectional microphone
-* 32000 Hz, 16 bit PCM, WAV files
-* each fold has audio files of about 1 minute, events are mixed over road background sound,
-  each file has a different background
-* table on the page: Background 2732 s; Car Crashes 200 events, 326.38 s; Tire skidding
-  200 events, 522.5 s
-* download: "In order to download the data set click here", which leads to the
-  `/datasets-request/` page: "Select the dataset you want to download (only registered users)"
+## 1. Freesound (crash, skid): NOT DOWNLOADED
 
-Not known yet, because the files have not been seen: the folder layout, file names, number of
-wav files, how folds are stored, and the exact XML annotation format. A public third party
-script (github.com/the6thsense/Mivia-Event-Data-road-Data-Extraction-script) reads
-`<events><item>` entries with `CLASS_ID`, `PATHNAME`, `STARTSECOND`, `ENDSECOND`, takes the audio
-from a `sounds` folder next to the XML, and treats `CLASS_ID` 3 as car crash. That is a hint
-only. `ml/prepare_data.py` is written for that layout and stops with a clear message if the real
-files look different.
+* Script: `ml/freesound_download.py` (ready, filters tested offline, never run against the API).
+* Rules in the script: only Creative Commons 0 or Attribution (CC BY 3.0 / 4.0), duration
+  0.5 to 30 seconds, up to 150 per class, HQ OGG preview converted to 16 bit wav with ffmpeg.
+* Keyword rules drop obvious wrong hits (crash cymbals, drums, music, computer crashes, game
+  and cartoon sounds, bicycles, voices). A crash must mention crash/collision/accident/impact
+  and a vehicle word; a skid must mention skid/screech/squeal/brake and must not mention a crash.
+  A sound found by both crash and skid searches is kept as crash only.
+* For every file it writes id, url, licence, author, pack, duration, original sample rate,
+  search query and tags to `ml/data/freesound_sounds.csv` and to `ml/freesound_sources.csv`
+  (committed, for citation).
+* Labels on Freesound are the uploader's own title and tags. They are not checked by listening.
 
-Licence: the page does not print a licence. It says the lab makes the data available to
-registered users and asks users to cite the papers below. Ask the guide if this is enough for
-the project report; it is an academic research dataset.
+Licence: each clip has its own licence (CC0 or CC BY). CC BY clips need the author's name and
+the clip link in the report; `ml/freesound_sources.csv` has both.
 
-Citations requested on the page:
+Citation for the platform: F. Font, G. Roma, X. Serra, "Freesound technical demo", Proceedings
+of the 21st ACM International Conference on Multimedia, 2013.
 
-* P. Foggia, N. Petkov, A. Saggese, N. Strisciuglio, M. Vento, "Audio surveillance of roads:
-  a system for detecting anomalous sounds", IEEE Transactions on Intelligent Transportation
-  Systems.
-* P. Foggia, A. Saggese, N. Strisciuglio, M. Vento, "Cascade Classifiers Trained on
-  Gammatonegrams for Reliably Detecting Audio Events", IEEE AVSS 2014.
+## 2. UrbanSound8K (background, part of loud_not_crash): done
 
-Citation given in CLAUDE.md: Foggia, Petkov, Saggese, Strisciuglio, Vento, "Reliable detection
-of audio events in highly noisy environments", Pattern Recognition Letters, 2015.
+* Downloaded from Kaggle `chrisfilo/urbansound8k` with `ml/kaggle_download.py` (zip of
+  6,026,232,524 bytes, streamed to disk, then unzipped into `ml/data/UrbanSound8K`).
+* Layout on disk: `UrbanSound8K.csv` and `fold1` ... `fold10`.
+* `UrbanSound8K.csv`: 8732 slices, columns slice_file_name, fsID, start, end, salience, fold,
+  classID, class. Clips per class: air_conditioner 1000, car_horn 429, children_playing 1000,
+  dog_bark 1000, drilling 1000, engine_idling 1000, gun_shot 374, jackhammer 1000, siren 929,
+  street_music 1000. dog_bark is not used.
+* The 7732 used slices are all readable. They come from 960 different Freesound recordings
+  (fsID). Formats vary: mostly 44.1 or 48 kHz, also 96 kHz and some 8 to 24 kHz, mono and
+  stereo, 16 bit, 24 bit and float. Every one is converted to 16 kHz mono.
+* Licence: the Kaggle dataset page (read through the Kaggle API) gives "Attribution-NonCommercial
+  4.0 International (CC BY-NC 4.0)": non commercial use with attribution, fine for a college
+  project. The authors' own site (urbansounddataset.weebly.com) was not checked in this run;
+  confirm the licence there before submitting the report.
+* Citation: J. Salamon, C. Jacoby, J. P. Bello, "A Dataset and Taxonomy for Urban Sound
+  Research", 22nd ACM International Conference on Multimedia, Orlando, USA, 2014.
 
-After you download it, run `ml\.venv\Scripts\python.exe ml\inspect_dataset.py` and paste the
-real structure into this section.
+## 3. ESC-50 (part of loud_not_crash): done
 
-## 2. Other open crash datasets that were checked and rejected
+* From https://github.com/karolpiczak/ESC-50 (archive zip of the repo), in `ml/data/ESC50`.
+* 2000 wav files, 44100 Hz, mono, PCM_16, 5 s each. `meta/esc50.csv` has filename, fold,
+  target, category, esc10, src_file, take.
+* Used: 9 classes x 40 clips = 360 clips.
+* Licence: Creative Commons Attribution-NonCommercial (CC BY-NC 3.0), from the LICENSE file.
+* Citation: K. J. Piczak, "ESC: Dataset for Environmental Sound Classification", Proceedings
+  of the 23rd ACM International Conference on Multimedia, 2015, pp. 1015-1018.
 
-| candidate | why it was not used |
-|---|---|
-| Hugging Face `Titung/car-crash-audio-cc` (46 clips, CC BY 3.0, not gated) | Clips cut from YouTube sound effect videos found by searching "car crash audio". Labels come from the search words, not from annotation, one source is titled "(No audio)", there is no skid class. Fails "labels are real, not guessed" and it is YouTube material. |
-| Hugging Face `Titung/car-crash-audio-clips`, `car-crash-audio-manual`, `vehicle-audio-dataset` | Gated (manual approval) and built from YouTube videos. |
-| DeepCrashzam (GitHub `leosole/DeepCrashzam-Dataset`) | Only a script that downloads YouTube videos. |
-| FSD50K (Zenodo 4060432) | Checked its `vocabulary.csv` (200 classes): no car crash and no skidding class. |
-| Zenodo "Car crash dataset RUSSIA 2022-2023" | Dashcam video dataset, not labelled audio. |
-| AudioSet "Skidding" / "Tire squeal" | Distributed as YouTube links only. |
+## 4. Folds (no leakage)
 
-Result: no open, properly labelled crash and skid audio was found, so Phase 0e applies.
+* Folds are built by source, never by window. All windows of one clip are in one fold.
+* Clips are joined into one group when they share a Freesound id (UrbanSound8K slices of one
+  recording; ESC-50 takes of one clip; the same Freesound recording appearing in two datasets)
+  or, for the Freesound crash and skid clips, the same uploader. A group goes to one fold.
+* Groups are placed biggest first into the fold that is most behind its share of each class.
+* `prepare_data.py` checks after the split that no clip and no group is in two folds. It
+  printed "leakage check passed" on the current file.
+* The original UrbanSound8K 10 folds and ESC-50 5 folds are not used, our 4 folds replace them.
 
-## 3. SYNTHETIC_ROAD (stand in, code test only)
+## 5. Windows (output of `ml/prepare_data.py`, file `ml/data/windows.npz`)
 
-**SYNTHETIC. Not real crashes. Scores on it are not results and are not reported as results.**
+1 second, 0.5 second hop, 16 kHz mono, int16. Per clip limits: background 2 windows (random,
+fixed seed), loud_not_crash 3, crash 20, skid 20 (the loudest ones). Windows quieter than
+10 percent of the loudest window of the same clip are dropped for crash, skid and
+loud_not_crash (silent padding). Clips shorter than 1 second are padded with silence.
 
-Made by `ml/make_synthetic.py` with numpy: road like noise with passing vehicle swells as
-background, "crashes" from decaying noise bursts, a low thump, ringing tones and clicks, "skids"
-from wobbling tones with band noise. It copies only the general idea of MIVIA (one minute clips,
-32 kHz, 16 bit, events over background, XML annotations, 4 folds).
+### Current file (2026-11-18): UrbanSound8K + ESC-50 only, no crash and no skid
 
-Checked on disk with `ml/inspect_dataset.py` (2026-11-16):
+Printed by the script (run with `--allow-no-crash`):
 
-* `ml/data/SYNTHETIC_ROAD/fold1..fold4/`, each with 6 XML files and `sounds/` with 6 WAV files
-* 24 WAV files, 32000 Hz, mono, PCM_16, 1440.0 s in total
-* 220 annotated events: 119 `car_crash` (CLASS_ID 3, 200.18 s), 101 `tire_skidding`
-  (CLASS_ID 2, 280.17 s)
+Per source:
 
-## 4. ESC-50 (real data, used for the 4th class `loud_not_crash`)
+| source | clips read | total seconds | windows kept |
+|---|---|---|---|
+| esc50_can_opening | 40 | 200.0 | 107 |
+| esc50_car_horn | 40 | 200.0 | 114 |
+| esc50_clapping | 40 | 200.0 | 120 |
+| esc50_dog | 40 | 200.0 | 112 |
+| esc50_door_wood_knock | 40 | 200.0 | 107 |
+| esc50_fireworks | 40 | 200.0 | 119 |
+| esc50_glass_breaking | 40 | 200.0 | 85 |
+| esc50_siren | 40 | 200.0 | 120 |
+| esc50_thunderstorm | 40 | 200.0 | 120 |
+| us8k_air_conditioner | 1000 | 3994.9 | 2000 |
+| us8k_car_horn | 429 | 1053.7 | 913 |
+| us8k_children_playing | 1000 | 3962.1 | 1996 |
+| us8k_drilling | 1000 | 3546.3 | 1904 |
+| us8k_engine_idling | 1000 | 3936.0 | 1990 |
+| us8k_gun_shot | 374 | 616.2 | 569 |
+| us8k_jackhammer | 1000 | 3610.7 | 1928 |
+| us8k_siren | 929 | 3632.7 | 2742 |
+| us8k_street_music | 1000 | 4000.0 | 2000 |
 
-Source: https://github.com/karolpiczak/ESC-50 (archive zip of the repo), in `ml/data/ESC50`.
-
-Checked on disk:
-
-* 2000 WAV files in `ESC-50-master/audio`, 44100 Hz, mono, PCM_16, 5 s each (10000.0 s total)
-* `meta/esc50.csv` columns: filename, fold, target, category, esc10, src_file, take
-* 5 folds of 400 clips
-* used classes (40 clips each, 400 clips, 80 per ESC fold, 313 different original Freesound
-  clips): door_wood_knock, door_wood_creaks, glass_breaking, fireworks, car_horn, siren,
-  clapping, dog, thunderstorm, can_opening
-
-Licence (from the LICENSE file in the repo): the dataset as a whole is under Creative Commons
-Attribution-NonCommercial (CC BY-NC 3.0). Fine for a college project, not for commercial use.
-The audio is not committed to git.
-
-Citation: K. J. Piczak, "ESC: Dataset for Environmental Sound Classification", Proceedings of
-the 23rd ACM International Conference on Multimedia, 2015, pp. 1015-1018.
-
-Fold mapping 5 to 4: ESC folds 1, 2, 3, 4 keep their number. Clips of ESC fold 5 go to group
-`(Freesound clip id mod 4) + 1`. ESC-50 keeps all takes of one original clip in one fold, so an
-original clip is never in two groups.
-
-## 5. Windows (output of `ml/prepare_data.py`)
-
-1 second windows, 0.5 second hop, 16 kHz mono, int16, saved to `ml/data/windows.npz`.
-
-### Current file: SYNTHETIC road data + real ESC-50
-
-Printed by the script on 2026-11-16. background / crash / skid rows are SYNTHETIC.
+Windows per class per fold:
 
 | class | fold 1 | fold 2 | fold 3 | fold 4 | total |
 |---|---|---|---|---|---|
-| background | 369 | 358 | 377 | 345 | 1449 |
-| crash | 99 | 108 | 101 | 99 | 407 |
-| skid | 136 | 138 | 130 | 156 | 560 |
-| loud_not_crash | 622 | 626 | 706 | 658 | 2612 |
-| all | 1226 | 1230 | 1314 | 1258 | 5028 |
+| background | 2955 | 2955 | 2954 | 2954 | 11818 |
+| crash | 0 | 0 | 0 | 0 | 0 |
+| skid | 0 | 0 | 0 | 0 | 0 |
+| loud_not_crash | 1307 | 1307 | 1307 | 1307 | 5228 |
+| all | 4262 | 4262 | 4261 | 4261 | 17046 |
 
-Also printed: 440 road windows dropped because they touched an event by 50 percent or less,
-988 ESC-50 windows dropped as near silent padding.
+Balance achieved: 25 / 25 / 25 / 25 percent per class. 1209 source groups. 1084 windows
+dropped as near silent, 5840 dropped by the per clip limit.
 
-### MIVIA + ESC-50
+### With Freesound crash and skid
 
-Not available yet. Run `ml\.venv\Scripts\python.exe ml\prepare_data.py --dataset mivia` after
-the download and copy the table from `ml/results/window_counts.md` here.
+Not available yet. After the download, `prepare_data.py` writes the full tables to
+`ml/results/window_counts.md`; copy them here.
+
+## Old plan: MIVIA (dropped)
+
+The MIVIA Road Audio Events page needs a registered account, login and reCAPTCHA, and the site
+reset connections. It is no longer used. `ml/make_synthetic.py` (SYNTHETIC test audio made from
+noise and tones) is kept only because the placeholder model in `public/model/` was trained on
+it; it is not part of the dataset.

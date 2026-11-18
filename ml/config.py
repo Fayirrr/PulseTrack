@@ -39,7 +39,24 @@ N_FRAMES = 1 + (WINDOW_SAMPLES - N_FFT) // STFT_HOP   # 59
 CLASSES = ["background", "crash", "skid", "loud_not_crash"]
 CRASH = CLASSES.index("crash")
 
+# ---- Sources (open datasets) ----
+URBANSOUND_DIR = os.path.join(DATA_DIR, "UrbanSound8K")
+FREESOUND_CRASH_DIR = os.path.join(DATA_DIR, "freesound_crash")
+FREESOUND_SKID_DIR = os.path.join(DATA_DIR, "freesound_skid")
+FREESOUND_CSV = os.path.join(DATA_DIR, "freesound_sounds.csv")
+
+# ESC-50 classes used as loud_not_crash
 ESC50_LOUD_CLASSES = [
-    "door_wood_knock", "door_wood_creaks", "glass_breaking", "fireworks", "car_horn",
-    "siren", "clapping", "dog", "thunderstorm", "can_opening",
+    "door_wood_knock", "glass_breaking", "fireworks", "car_horn", "siren",
+    "dog", "clapping", "can_opening", "thunderstorm",
 ]
+# UrbanSound8K classes
+US8K_BACKGROUND_CLASSES = ["engine_idling", "street_music", "air_conditioner", "drilling",
+                           "children_playing", "jackhammer"]
+US8K_LOUD_CLASSES = ["car_horn", "siren", "gun_shot"]
+
+# Windows kept per clip (keeps one long clip or one big class from dominating)
+MAX_WINDOWS_PER_CLIP = {"crash": 20, "skid": 20, "background": 2, "loud_not_crash": 3}
+# A crash, skid or loud_not_crash window is kept only if its RMS is at least this fraction of
+# the loudest window of the same clip (drops silent padding before and after the sound).
+EVENT_RMS_FRACTION = 0.1

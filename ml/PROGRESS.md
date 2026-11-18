@@ -100,3 +100,23 @@ Run started 2026-11-16 late evening. Branch `ml-crash-cnn`.
 * `gh` (GitHub CLI) is not installed on this laptop, so the pull request was NOT sent. The
   branch is committed locally only. Commands are in `MORNING_SUMMARY.md`, PR text is in
   `ml/PR_BODY.md`.
+
+# Second run, 2026-11-18: open datasets
+
+* Credentials ignored in git first (commit "Ignore kaggle.json and freesound_key.txt").
+* UrbanSound8K: done. The kaggle CLI failed (certificate check, then the whole file in memory).
+  Replaced by `ml/kaggle_download.py`; 6,026,232,524 byte zip downloaded and unzipped.
+* ESC-50: already on disk from the first run (2000 files), reused.
+* Freesound: **failed, not a code problem**. `freesound_key.txt` stayed empty (0 bytes) for the
+  whole run. `ml/freesound_download.py` is written and its filters were tested offline; it was
+  never run against the API.
+* `ml/prepare_data.py` rewritten for the new sources and run on UrbanSound8K + ESC-50:
+  17,046 windows, 25 percent of each class per fold, leakage check passed. Real counts in
+  `DATASET.md`.
+* `ml/train.py`: new loud_not_crash false alarm section, per source table, class weight fix,
+  `--data` / `--out`. A 3 epoch code test on the new windows ran through all 4 folds; its
+  output went to a temporary folder (no crash class, numbers meaningless).
+* Real training: **skipped**, no crash data. `RESULTS.md` says so and has no numbers.
+* Export, app, phone test tool: unchanged from the first run, still working with the
+  placeholder model.
+* PR: **not sent**, `gh` is still not installed.

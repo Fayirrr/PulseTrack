@@ -132,3 +132,59 @@ Every choice that was not spelled out in the task is listed here with the reason
     university roll numbers and the PR goes to a public GitHub repo. `CLAUDE.md` is committed.
 37. `ml/export/check_windows.*` (10 audio windows used by the export check) are git ignored
     because they can contain ESC-50 audio (CC BY-NC). The check script recreates them.
+
+## Second run (2026-11-18): open datasets instead of MIVIA
+
+38. **Credentials.** `kaggle.json` and `freesound_key.txt` were added to `.gitignore` and
+    committed before anything else. `kaggle.json` was copied to `%USERPROFILE%\.kaggle\`. No
+    script prints or writes either credential.
+39. **Kaggle download.** The kaggle CLI failed the same HTTPS certificate check as pip, and once
+    that was fixed it kept the whole 6 GB zip in memory (1.1 GB RAM after a few minutes, nothing
+    on disk). `ml/kaggle_download.py` calls the same Kaggle API endpoint, streams to disk in
+    8 MB chunks, resumes after a break and uses `truststore` (verification stays on).
+40. **Freesound key was empty.** `freesound_key.txt` was 0 bytes from start to end of the run
+    (checked many times over about an hour, including a 30 minute wait loop). Other key files in the Downloads folder were
+    NOT opened; the task named only `freesound_key.txt`. So crash and skid have 0 clips, and
+    Phase 0c ("use what you got") leaves no crash class. Real training was skipped.
+41. **Extra search words** for Freesound besides the five given: crash adds "car accident" and
+    "car impact"; skid adds "tyre skid", "tire screech", "car skid", "brake skid", "tires
+    squeal". The five given ones alone are unlikely to give 48 usable skids after the licence
+    and keyword filters.
+42. **Licence check is done twice**: once in the API filter, once on the licence URL returned
+    for each sound (CC0 1.0, CC BY 3.0, CC BY 4.0 kept; NonCommercial and Sampling+ dropped).
+43. **Keyword rules** reject obvious wrong hits (crash cymbals, music, computer crashes, game
+    sounds, bicycles, voices). A sound returned by both a crash and a skid search is kept as
+    crash only, and a "skid" whose text mentions a crash is dropped. Labels are still the
+    uploaders' tags, not checked by listening.
+44. **HQ OGG previews** are downloaded, not the original files: the original file download in
+    the Freesound API needs OAuth2 login, previews only need the API key. Previews are lossy
+    (about 128 kbps), which is fine after resampling to 16 kHz.
+45. **Groups for folds.** Freesound crash and skid clips are grouped by uploader as well as by
+    id, because one person often uploads several takes of the same recording session.
+    UrbanSound8K slices are grouped by fsID (slices of one recording), ESC-50 by src_file.
+    Because UrbanSound8K and ESC-50 both come from Freesound, the same id from both datasets
+    lands in the same group. The original 10 / 5 folds of those datasets are not used.
+46. **Greedy fold balance**: biggest group first, into the fold furthest behind its share of
+    each class. On UrbanSound8K + ESC-50 it gave 25 percent of each class per fold.
+47. **Windows per clip are capped** (background 2, loud_not_crash 3, crash 20, skid 20).
+    Without the cap UrbanSound8K background would be about 42,000 windows against a few hundred
+    crash windows, and training would take far longer than 2 hours on CPU. For crash, skid and
+    loud_not_crash the loudest windows are kept; background windows are picked at random.
+48. **Quiet windows dropped** for crash, skid and loud_not_crash (below 10 percent RMS of the
+    loudest window in the clip): a 20 second "car crash" upload usually has silence or engine
+    noise around the impact. Background windows are never dropped, quiet is background.
+49. **drilling and jackhammer count as background**, as the task says, although they are loud.
+    This makes the loudness rule look worse on background, so the report should say so.
+50. **The ESC-50 class list changed** to the 9 classes in this task (door_wood_creaks removed).
+51. **train.py fixes**: Keras needs a class weight for every class even when one is missing,
+    so missing classes get 1.0; `--data` and `--out` options were added so code tests never
+    overwrite `ml/results/` or the saved model. RESULTS.md now has a highlighted loud_not_crash
+    false alarm section and a per source false alarm table.
+52. **The "up to 3 improvements" step** was not run: there is no crash data to score.
+53. **The placeholder model stays in `public/model/`** (synthetic, marked "TEST MODEL" in the
+    app, not allowed to trigger alarms). Retraining it on UrbanSound8K + ESC-50 without crash
+    data would not make it more useful.
+54. **One command for the rest**: `ml/run_pipeline.ps1` runs download, windows, features,
+    training, export, export check and the app build in order, stopping at the first error.
+55. **MIVIA code removed from the data path.** `prepare_data.py` was rewritten for the new
+    sources. `make_synthetic.py` is kept only because the placeholder model came from it.

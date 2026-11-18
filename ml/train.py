@@ -147,6 +147,15 @@ def binary_report(is_crash, pred, is_loud):
     }
 
 
+def balanced_weights(labels, n_classes):
+    """sklearn 'balanced' weights; classes with no samples get 1.0 because Keras wants every class."""
+    present = np.unique(labels)
+    cw = compute_class_weight("balanced", classes=present, y=labels)
+    weights = {c: 1.0 for c in range(n_classes)}
+    weights.update({int(c): float(w) for c, w in zip(present, cw)})
+    return weights
+
+
 # --------------------------------------------------------------------------- plots
 def plot_confusion(cm, names, path, title):
     fig, ax = plt.subplots(figsize=(5.2, 4.6))
@@ -192,12 +201,14 @@ def main():
     ap.add_argument("--tag", default="base", help="name of this run (used for improvement variants)")
     ap.add_argument("--smoke", action="store_true", help="3 epochs, only to test the code")
     ap.add_argument("--skip-final", action="store_true")
+    ap.add_argument("--data", default=C.WINDOWS_NPZ, help="windows file (default ml/data/windows.npz)")
+    ap.add_argument("--out", default=None, help="write results here instead of ml/results (for code tests)")
     args = ap.parse_args()
     if args.smoke:
         args.epochs = 3
 
     tf.keras.utils.set_random_seed(SEED)
-    d = np.load(C.WINDOWS_NPZ, allow_pickle=False)
+    d = np.load(args.data, allow_pickle=False)
     X, y, fold, group = d["X"], d["y"].astype(np.int64), d["fold"], d["group"]
     meta = json.loads(str(d["meta"]))
     synthetic = bool(meta["synthetic"])
@@ -206,6 +217,9 @@ def main():
     n_classes = len(names)
 
     out_dir = os.path.join(C.RESULTS_DIR, "synthetic_smoke_test") if synthetic else C.RESULTS_DIR
+    if args.out:
+        out_dir = args.out
+        args.skip_final = True  # a code test never replaces the saved model
     if args.tag != "base":
         out_dir = os.path.join(out_dir, f"variant_{args.tag}")
     os.makedirs(out_dir, exist_ok=True)
@@ -226,6 +240,9 @@ def main():
     feats = F.features_numpy(X)
     loud = loudness_score(X)
 
+    src_all = d["source"] if "source" in d.files else np.array(["unknown"] * len(y))
+    cnn_crash_pred = np.zeros(len(y), bool)    # out of fold predictions, filled fold by fold
+    loud_crash_pred = np.zeros(len(y), bool)
     fold_metrics, best_epochs = [], []
     for k in (1, 2, 3, 4):
         test = fold == k
@@ -233,8 +250,7 @@ def main():
         gss = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=SEED + k)
         tr_rel, va_rel = next(gss.split(trainval, y[trainval], group[trainval]))
         tr, va = trainval[tr_rel], trainval[va_rel]
-        cw = compute_class_weight("balanced", classes=np.unique(y[tr]), y=y[tr])
-        class_weight = {int(c): float(w) for c, w in zip(np.unique(y[tr]), cw)}
+        class_weight = balanced_weights(y[tr], n_classes)
         bg = X[tr][y[tr] == names.index("background")]
         if len(bg) > 2000:
             bg = bg[np.random.default_rng(SEED).choice(len(bg), 2000, replace=False)]
@@ -263,6 +279,8 @@ def main():
         is_loud = yt == names.index("loud_not_crash")
 
         thr = tune_threshold(loud[trainval], y[trainval] == C.CRASH)
+        cnn_crash_pred[test] = pred == C.CRASH
+        loud_crash_pred[test] = loud[test] > thr
         m = {
             "fold": k, "n_train": int(len(tr)), "n_val": int(len(va)), "n_test": int(test.sum()),
             "epochs_run": len(hist["loss"]), "best_epoch": best_epochs[-1],
@@ -328,6 +346,17 @@ def main():
     md.append("| metric | CNN (argmax) | loudness rule (threshold tuned on train folds) |\n|---|---|---|")
     for name, a, b in rows:
         md.append(f"| {name} | {fmt(a)} | {fmt(b) if b is not None else 'not applicable'} |")
+    fa_cnn = col(lambda m: m["cnn"]["crash_vs_rest_argmax"]["false_alarm_rate_loud_not_crash"])
+    fa_loud = col(lambda m: m["loudness_rule"]["tuned"]["false_alarm_rate_loud_not_crash"])
+    md.append("\n### Key point: false alarms on loud sounds that are not crashes\n")
+    md.append(f"> On `loud_not_crash` test windows (door knocks, fireworks, glass breaking, horns, sirens, "
+              f"gun shots and more) the **loudness rule raised a crash alarm on {fmt(fa_loud)}** of windows, "
+              f"the **CNN on {fmt(fa_cnn)}** (fraction of windows, mean ± std over the 4 folds).\n")
+    md.append("\nFalse alarm rate per loud_not_crash source (all 4 test folds pooled):\n")
+    md.append("| source | windows | CNN false alarm rate | loudness rule false alarm rate |\n|---|---|---|---|")
+    for s_name in sorted(set(src_all[y == names.index("loud_not_crash")])):
+        sel = (src_all == s_name) & (y == names.index("loud_not_crash"))
+        md.append(f"| {s_name} | {int(sel.sum())} | {cnn_crash_pred[sel].mean():.3f} | {loud_crash_pred[sel].mean():.3f} |")
     md.append("\nOther operating points, crash as positive, mean ± std over folds:\n")
     md.append("| rule | crash precision | crash recall | crash F1 | false alarm rate on loud_not_crash |\n|---|---|---|---|---|")
     for label, fn in [("CNN, crash probability > 0.7", lambda m: m["cnn"]["crash_vs_rest_p_above_0.7"]),
@@ -370,13 +399,13 @@ def main():
     model = build_model(n_classes, args.width, args.dropout)
     model.compile(optimizer=tf.keras.optimizers.Adam(args.lr),
                   loss="sparse_categorical_crossentropy", metrics=["accuracy"])
-    cw = compute_class_weight("balanced", classes=np.unique(y), y=y)
+    final_weights = balanced_weights(y, n_classes)
     bg = X[y == names.index("background")]
     if len(bg) > 2000:
         bg = bg[np.random.default_rng(SEED).choice(len(bg), 2000, replace=False)]
     ds = make_train_dataset(X, y, bg, n_classes, args.batch, not args.no_specaug)
     model.fit(ds, epochs=epochs_final, verbose=2,
-              class_weight={int(c): float(w) for c, w in zip(np.unique(y), cw)})
+              class_weight=final_weights)
     os.makedirs(C.MODELS_DIR, exist_ok=True)
     model.save(os.path.join(C.MODELS_DIR, "crash_cnn.keras"))
     model.save(os.path.join(C.MODELS_DIR, "crash_cnn.h5"))

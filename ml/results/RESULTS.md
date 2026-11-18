@@ -2,37 +2,30 @@
 
 ## There are no real results yet
 
-Real training was **skipped**. The MIVIA Road Audio Events dataset could not be downloaded
-during the unattended run (the site needs a registered account, login and reCAPTCHA) and no
-other open dataset with properly labelled car crash and tire skid audio was found. See
-`ml/DATASET.md` and `ml/MORNING_SUMMARY.md`.
+Real training was **skipped** on 2026-11-18. The crash and skid clips come from Freesound, and
+`freesound_key.txt` in the repo root was empty (0 bytes) for the whole run, so nothing could be
+downloaded. Without crash audio there is no positive class, so neither the CNN nor the
+loudness rule can be scored for crash detection.
 
 So this file has **no accuracy, precision, recall, F1 or false alarm numbers**. Nothing here may
 be quoted in the project report.
 
-## What was run instead
+What is ready: UrbanSound8K and ESC-50 are downloaded and windowed (17,046 windows, counts in
+`ml/DATASET.md`), and every script ran on them. A 3 epoch code test of `train.py` on those
+windows was written to a temporary folder and thrown away, because without a crash class its
+numbers mean nothing.
 
-The complete pipeline was run on SYNTHETIC road audio (made from noise and sine tones by
-`ml/make_synthetic.py`) plus real ESC-50 clips, only to prove that the code works from start to
-end: windows, features, 4 fold cross validation, loudness baseline, figures, final model,
-TensorFlow.js export.
-
-The log of that run is in `ml/results/synthetic_smoke_test/SMOKE_TEST_LOG.md`. Those scores
-describe how well a CNN separates computer made beeps and noise bursts. They say nothing about
-real crashes and are not results.
+The folder `ml/results/synthetic_smoke_test/` is an older code test on SYNTHETIC audio. It is
+not a result either.
 
 ## How to get the real results
 
-1. Put the MIVIA dataset in `ml/data/MIVIA_ROAD_DB1` (steps in `ml/MORNING_SUMMARY.md`).
-2. Run:
+1. Paste the Freesound API key into `freesound_key.txt` (one line) and save the file.
+2. From the repo root run:
 
 ```powershell
-ml\.venv\Scripts\python.exe ml\inspect_dataset.py
-ml\.venv\Scripts\python.exe ml\prepare_data.py --dataset mivia
-ml\.venv\Scripts\python.exe ml\train.py
-ml\.venv\Scripts\python.exe ml\export_tfjs.py
-ml\.venv\Scripts\python.exe ml\check_export.py
+powershell -ExecutionPolicy Bypass -File ml\run_pipeline.ps1
 ```
 
 `train.py` then overwrites this file with the real tables: mean and standard deviation over the
-4 folds, CNN vs loudness rule, and the false alarm rate on `loud_not_crash` for both.
+4 folds, CNN vs loudness rule, and the false alarm rate on `loud_not_crash` for both, per source.
