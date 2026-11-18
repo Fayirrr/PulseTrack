@@ -13,6 +13,8 @@ Printed by ml/prepare_data.py
 | esc50_glass_breaking | 40 | 200.0 | 44100: 40 | 85 |
 | esc50_siren | 40 | 200.0 | 44100: 40 | 120 |
 | esc50_thunderstorm | 40 | 200.0 | 44100: 40 | 120 |
+| freesound_crash | 136 | 1231.0 | 11025: 1, 24000: 1, 32000: 1, 44100: 38, 48000: 88, 96000: 7 | 1316 |
+| freesound_skid | 54 | 665.0 | 8000: 1, 24000: 1, 44100: 9, 48000: 35, 96000: 8 | 722 |
 | us8k_air_conditioner | 1000 | 3994.9 | 44100: 675, 48000: 325 | 2000 |
 | us8k_car_horn | 429 | 1053.7 | 16000: 21, 44100: 288, 48000: 105, 96000: 15 | 913 |
 | us8k_children_playing | 1000 | 3962.1 | 11024: 7, 11025: 8, 22050: 7, 44100: 590, 48000: 372, 96000: 16 | 1996 |
@@ -28,9 +30,9 @@ Printed by ml/prepare_data.py
 | class | fold 1 | fold 2 | fold 3 | fold 4 | total |
 |---|---|---|---|---|---|
 | background | 2955 | 2955 | 2954 | 2954 | 11818 (split 25% / 25% / 25% / 25%) |
-| crash | 0 | 0 | 0 | 0 | 0 (split 0% / 0% / 0% / 0%) |
-| skid | 0 | 0 | 0 | 0 | 0 (split 0% / 0% / 0% / 0%) |
+| crash | 527 | 263 | 263 | 263 | 1316 (split 40% / 20% / 20% / 20%) |
+| skid | 458 | 88 | 88 | 88 | 722 (split 63% / 12% / 12% / 12%) |
 | loud_not_crash | 1307 | 1307 | 1307 | 1307 | 5228 (split 25% / 25% / 25% / 25%) |
-| all | 4262 | 4262 | 4261 | 4261 | 17046 |
+| all | 5247 | 4613 | 4612 | 4612 | 19084 |
 
-Other counts: {'windows_dropped_quiet': 1084, 'windows_dropped_cap': 5840}. Source groups: 1209.
+Other counts: {'windows_dropped_quiet': 2019, 'windows_dropped_cap': 6389}. Source groups: 1289.
