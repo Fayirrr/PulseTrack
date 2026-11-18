@@ -56,3 +56,7 @@ ml/export/check_windows.*
 __pycache__/
 *.pyc
 ml/export/
+
+# Credentials (never commit)
+kaggle.json
+freesound_key.txt
