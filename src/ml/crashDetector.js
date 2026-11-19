@@ -29,7 +29,10 @@ async function fetchJson(url) {
 
 // audioContext: the AudioContext the app already uses
 // sourceNode:   the MediaStreamAudioSourceNode of the existing mic stream
-// onPrediction: called every 0.5 s with { label, confidence, crashProb, probs, modelVersion, synthetic }
+// onPrediction: called every 0.5 s with { label, confidence, crashProb, probs, modelVersion, synthetic,
+//               rmsDb (window loudness, dBFS), peakDb (loudest 32 ms slice, dBFS),
+//               ambientDb (room level over the last 10 s, null at first),
+//               windowsSeen (predictions since start) }
 // Rejects if the model cannot be loaded (the caller then falls back to the loudness rule).
 export async function createCrashDetector({ audioContext, sourceNode, onPrediction }) {
   // TensorFlow.js is loaded only here, so the rest of the app does not pay for it.
@@ -74,6 +77,13 @@ export async function createCrashDetector({ audioContext, sourceNode, onPredicti
   let stopped = false;
   const hopNative = Math.round(srcRate * (cfg.hopSamples / cfg.sampleRate));
 
+  // Loudness of recent windows. The model normalises every window, so it cannot tell a quiet room
+  // from a loud bang by itself; silence and steady hum can score 0.4 to 0.6 "crash". These numbers
+  // let the caller ignore windows that are quiet or no louder than the room was a moment ago.
+  const recentDb = [];          // RMS (dBFS) of the last AMBIENT_HISTORY windows
+  const AMBIENT_HISTORY = 20;   // 20 windows x 0.5 s = last 10 seconds
+  let windowsSeen = 0;
+
   const runPrediction = () => {
     const native = new Float32Array(ringSize);
     native.set(ring.subarray(writePos));
@@ -81,7 +91,29 @@ export async function createCrashDetector({ audioContext, sourceNode, onPredicti
     const resampled = resampleTo16k(native, srcRate, cfg.sampleRate);
     const window16k = new Float32Array(cfg.windowSamples);
     window16k.set(resampled.subarray(0, Math.min(resampled.length, cfg.windowSamples)));
-    onPrediction(predictWindow(window16k));
+
+    let sum = 0;
+    for (let i = 0; i < window16k.length; i++) sum += window16k[i] * window16k[i];
+    const rmsDb = 20 * Math.log10(Math.sqrt(sum / window16k.length) + 1e-12);
+    // loudest 32 ms slice of the window: a crash has a sharp peak, steady noise does not
+    let peakSq = 0;
+    for (let s = 0; s + 512 <= window16k.length; s += 512) {
+      let e = 0;
+      for (let i = s; i < s + 512; i++) e += window16k[i] * window16k[i];
+      peakSq = Math.max(peakSq, e / 512);
+    }
+    const peakDb = 20 * Math.log10(Math.sqrt(peakSq) + 1e-12);
+    // ambient level = 20th percentile of the previous windows (robust to a single loud event)
+    let ambientDb = null;
+    if (recentDb.length > 0) {
+      const sorted = [...recentDb].sort((a, b) => a - b);
+      ambientDb = sorted[Math.floor(0.2 * (sorted.length - 1))];
+    }
+    recentDb.push(rmsDb);
+    if (recentDb.length > AMBIENT_HISTORY) recentDb.shift();
+    windowsSeen += 1;
+
+    onPrediction({ ...predictWindow(window16k), rmsDb, peakDb, ambientDb, windowsSeen });
   };
 
   // ScriptProcessorNode is old but works in every mobile browser without an extra worklet file.

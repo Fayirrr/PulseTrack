@@ -92,6 +92,11 @@ CNN per class:
   windows in a row, **or** crash probability above 0.5 together with a motion spike. One
   prediction alone never starts it. The cancel countdown is unchanged.
 * If the model cannot load, the card shows "AI model offline" and the old loudness rule is used.
+* A CNN window only counts toward the trigger if it is a real sound event: after a 3 s warm up,
+  louder than -50 dBFS, at least 6 dB above the room level of the last 10 s and with a short
+  burst 15 dB above it. This stops silence or steady room noise (which the model can score as
+  crash) from starting the countdown right after the page loads. Motion spikes in the first
+  second after the sensors start are ignored.
 * The Audio Pulse card shows the live class and confidence.
 * The Firestore alert has three new fields: `cnnLabel`, `cnnConfidence`, `modelVersion`.
 * The motion trigger, SOS button, timer, Survival Mode and beacon are not changed.

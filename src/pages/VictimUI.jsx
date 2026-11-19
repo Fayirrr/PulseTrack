@@ -8,6 +8,15 @@ import { createCrashDetector } from '../ml/crashDetector';
 // clock for sensor callbacks (kept outside the component)
 const nowMs = () => Date.now();
 
+// Guards for the crash sound CNN. The model normalises every window, so silence, a quiet room or a
+// steady hum can score 0.4 to 0.6 "crash" (0.64 for mains hum in a test). Without these guards the
+// "above 0.7 twice in a row" rule could fire on steady room noise right after the page loads.
+const CNN_WARMUP_WINDOWS = 6;     // ignore the first 6 predictions (3 s): mic start up, auto gain settling
+const CNN_MIN_DB = -50;           // a window quieter than -50 dBFS is never a crash (99.8% of training crash windows are louder)
+const CNN_ABOVE_AMBIENT_DB = 6;   // a crash window must be at least 6 dB louder than the room level of the last 10 s
+const CNN_PEAK_ABOVE_AMBIENT_DB = 15; // and have a short burst at least 15 dB above it (steady noise never does)
+const MOTION_WARMUP_MS = 1000;    // ignore motion spikes in the first second after the sensors start
+
 export default function VictimUI() {
   const [deviceId] = useState(() => {
     let id = localStorage.getItem("pulse_device_id");
@@ -66,6 +75,8 @@ export default function VictimUI() {
   const crashStreakRef = useRef(0);       // windows in a row with crash probability above 0.7
   const lastMotionSpikeRef = useRef(0);   // time of the last motion reading above the motion threshold
   const detectorRef = useRef(null);
+  const motionSourceRef = useRef(null);   // 'acceleration' or 'accelerationIncludingGravity', fixed on the first event
+  const motionStartRef = useRef(0);       // when the motion listener was started
 
   useEffect(() => { motionThreshRef.current = motionThreshold; }, [motionThreshold]);
   useEffect(() => { audioThreshRef.current = audioThreshold; }, [audioThreshold]);
@@ -130,7 +141,12 @@ export default function VictimUI() {
 
   const handleMotion = (event) => {
     if (isTrappedRef.current) return;
-    const acc = event.acceleration || event.accelerationIncludingGravity;
+    // Pick one source on the first event and keep it. Switching between acceleration and
+    // accelerationIncludingGravity between two events would look like a ~9.8 m/s² jump.
+    if (motionSourceRef.current === null) {
+      motionSourceRef.current = event.acceleration && event.acceleration.x !== null ? 'acceleration' : 'accelerationIncludingGravity';
+    }
+    const acc = event[motionSourceRef.current];
     if (!acc || acc.x === null) return;
 
     const { x, y, z } = acc;
@@ -151,9 +167,12 @@ export default function VictimUI() {
     currentMotionRef.current = movement;
     setMotionMS2(movement);
     
-    if (movement > motionThreshRef.current) lastMotionSpikeRef.current = nowMs();
+    // Readings in the first second after start (the tap on "Initialize", sensor start up) never count as a spike.
+    const motionWarm = nowMs() - motionStartRef.current >= MOTION_WARMUP_MS;
+    const isSpike = motionWarm && movement > motionThreshRef.current;
+    if (isSpike) lastMotionSpikeRef.current = nowMs();
 
-    if (movement > motionThreshRef.current && !isFalseAlarmRef.current && !isTrappedRef.current && sensorsActiveRef.current) {
+    if (isSpike && !isFalseAlarmRef.current && !isTrappedRef.current && sensorsActiveRef.current) {
       triggerFalseAlarm();
     }
   };
@@ -167,9 +186,21 @@ export default function VictimUI() {
       crashStreakRef.current = 0;
       return;
     }
+    // Only a real sound event may count: after the warm up, loud enough, and clearly louder than the
+    // room was a moment ago. Silence or steady noise resets the streak.
+    const isSoundEvent = pred.windowsSeen > CNN_WARMUP_WINDOWS
+      && pred.rmsDb >= CNN_MIN_DB
+      && pred.ambientDb !== null
+      && pred.rmsDb >= pred.ambientDb + CNN_ABOVE_AMBIENT_DB
+      && pred.peakDb >= pred.ambientDb + CNN_PEAK_ABOVE_AMBIENT_DB;
+    if (!isSoundEvent) {
+      crashStreakRef.current = 0;
+      return;
+    }
     crashStreakRef.current = pred.crashProb > 0.7 ? crashStreakRef.current + 1 : 0;
     const twoInARow = crashStreakRef.current >= 2;
-    const crashWithMotion = pred.crashProb > 0.5 && nowMs() - lastMotionSpikeRef.current < 2000;
+    const crashWithMotion = pred.crashProb > 0.5 && lastMotionSpikeRef.current > 0
+      && nowMs() - lastMotionSpikeRef.current < 2000;
     if (twoInARow || crashWithMotion) {
       crashStreakRef.current = 0;
       triggerFalseAlarm();
@@ -190,7 +221,12 @@ export default function VictimUI() {
       motionGranted = true; 
     }
 
-    if (motionGranted) window.addEventListener('devicemotion', handleMotion);
+    if (motionGranted) {
+      motionStartRef.current = nowMs();
+      lastAccRef.current = { x: null, y: null, z: null };
+      motionSourceRef.current = null;
+      window.addEventListener('devicemotion', handleMotion);
+    }
 
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioCtxRef.current = new AudioContext();

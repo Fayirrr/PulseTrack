@@ -188,3 +188,28 @@ Every choice that was not spelled out in the task is listed here with the reason
     training, export, export check and the app build in order, stopping at the first error.
 55. **MIVIA code removed from the data path.** `prepare_data.py` was rewritten for the new
     sources. `make_synthetic.py` is kept only because the placeholder model came from it.
+
+## Bug fix (2026-11-19): countdown starting right after the page loads
+
+56. **Cause.** The model normalises every window to zero mean and unit variance, so it cannot
+    tell a quiet room from a loud bang. In tests it gave crash 0.43 on digital silence and 0.64
+    on mains hum plus hiss, and on real UrbanSound8K clips (engine idling, street music,
+    children) about 5 to 7 percent of 4 second clips produced two windows above 0.7 in a row,
+    at any playback level. In an offline simulation of continuous listening, the old rule
+    started a false countdown in 12 of 20 one minute runs of steady room noise, one of them
+    2.0 s after start. Because steady noise looks the same from window to window, the "2 in a
+    row" rule fires soon after the model loads.
+57. **Fix (VictimUI.jsx + crashDetector.js).** A CNN window only counts toward the trigger if
+    it is a real sound event: after a 3 s warm up (6 predictions), at least -50 dBFS, at least
+    6 dB above the room level (20th percentile of the last 10 s), and with a 32 ms burst at
+    least 15 dB above the room level. Any other window resets the streak. Offline, with the
+    peak check: 0 of 20 false countdowns on steady noise (both test tracks), real crash clips
+    after a quiet room still detected 45 of 60 times (same as without the peak check). Everyday
+    sounds (street music, children, dog) still caused 3 of 60 false countdowns; that is model
+    accuracy, covered by the 15 s cancel countdown.
+58. **Motion.** The motion source (acceleration or accelerationIncludingGravity) is fixed on
+    the first event, so a switch between them can never look like a ~10 to 17 m/s² jump, and
+    spikes in the first second after the sensors start are ignored. This was not shown to be
+    the cause in tests, but it closes a start up path.
+59. **Retraining idea, not done:** add quiet room and speech windows to the background class so
+    the model itself learns that silence is not a crash.
