@@ -1,0 +1,18 @@
+{
+ "modelVersion": "crashcnn-open_freesound_us8k_esc50-20261118",
+ "synthetic": false,
+ "roadDataset": "open_freesound_us8k_esc50",
+ "classes": [
+  "background",
+  "crash",
+  "skid",
+  "loud_not_crash"
+ ],
+ "parameters": 79700,
+ "epochs": 14,
+ "trainWindows": 19084,
+ "tag": "base",
+ "width": 16,
+ "dropout": 0.25,
+ "note": "Trained by the PulseTrack team."
+}

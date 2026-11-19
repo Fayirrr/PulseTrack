@@ -3,6 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { Activity, Mic, ShieldAlert, CheckCircle, XCircle, Battery, Wifi, WifiOff, Minus, Plus, Settings2 } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { createCrashDetector } from '../ml/crashDetector';
+
+// clock for sensor callbacks (kept outside the component)
+const nowMs = () => Date.now();
+
+// Guards for the crash sound CNN. The model normalises every window, so silence, a quiet room or a
+// steady hum can score 0.4 to 0.6 "crash" (0.64 for mains hum in a test). Without these guards the
+// "above 0.7 twice in a row" rule could fire on steady room noise right after the page loads.
+const CNN_WARMUP_WINDOWS = 6;     // ignore the first 6 predictions (3 s): mic start up, auto gain settling
+const CNN_MIN_DB = -50;           // a window quieter than -50 dBFS is never a crash (99.8% of training crash windows are louder)
+const CNN_ABOVE_AMBIENT_DB = 6;   // a crash window must be at least 6 dB louder than the room level of the last 10 s
+const CNN_PEAK_ABOVE_AMBIENT_DB = 15; // and have a short burst at least 15 dB above it (steady noise never does)
+const MOTION_WARMUP_MS = 1000;    // ignore motion spikes in the first second after the sensors start
 
 export default function VictimUI() {
   const [deviceId] = useState(() => {
@@ -51,6 +64,19 @@ export default function VictimUI() {
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
   const audioCtxRef = useRef(null);
+
+  // Team trained crash sound CNN (src/ml/crashDetector.js)
+  // cnnMode: 'idle' | 'loading' | 'ready' | 'test' (placeholder model) | 'offline' (load failed)
+  const [cnnMode, setCnnMode] = useState('idle');
+  const [cnnView, setCnnView] = useState(null);
+  const cnnModeRef = useRef('idle');
+  const cnnLatestRef = useRef(null);      // newest prediction
+  const cnnAtTriggerRef = useRef(null);   // prediction that was live when the countdown started
+  const crashStreakRef = useRef(0);       // windows in a row with crash probability above 0.7
+  const lastMotionSpikeRef = useRef(0);   // time of the last motion reading above the motion threshold
+  const detectorRef = useRef(null);
+  const motionSourceRef = useRef(null);   // 'acceleration' or 'accelerationIncludingGravity', fixed on the first event
+  const motionStartRef = useRef(0);       // when the motion listener was started
 
   useEffect(() => { motionThreshRef.current = motionThreshold; }, [motionThreshold]);
   useEffect(() => { audioThreshRef.current = audioThreshold; }, [audioThreshold]);
@@ -115,7 +141,12 @@ export default function VictimUI() {
 
   const handleMotion = (event) => {
     if (isTrappedRef.current) return;
-    const acc = event.acceleration || event.accelerationIncludingGravity;
+    // Pick one source on the first event and keep it. Switching between acceleration and
+    // accelerationIncludingGravity between two events would look like a ~9.8 m/s² jump.
+    if (motionSourceRef.current === null) {
+      motionSourceRef.current = event.acceleration && event.acceleration.x !== null ? 'acceleration' : 'accelerationIncludingGravity';
+    }
+    const acc = event[motionSourceRef.current];
     if (!acc || acc.x === null) return;
 
     const { x, y, z } = acc;
@@ -136,7 +167,42 @@ export default function VictimUI() {
     currentMotionRef.current = movement;
     setMotionMS2(movement);
     
-    if (movement > motionThreshRef.current && !isFalseAlarmRef.current && !isTrappedRef.current && sensorsActiveRef.current) {
+    // Readings in the first second after start (the tap on "Initialize", sensor start up) never count as a spike.
+    const motionWarm = nowMs() - motionStartRef.current >= MOTION_WARMUP_MS;
+    const isSpike = motionWarm && movement > motionThreshRef.current;
+    if (isSpike) lastMotionSpikeRef.current = nowMs();
+
+    if (isSpike && !isFalseAlarmRef.current && !isTrappedRef.current && sensorsActiveRef.current) {
+      triggerFalseAlarm();
+    }
+  };
+
+  // Called every 0.5 s by the crash detector. One prediction alone never starts the countdown.
+  const handleCnnPrediction = (pred) => {
+    cnnLatestRef.current = pred;
+    setCnnView({ label: pred.label, confidence: pred.confidence });
+    if (cnnModeRef.current !== 'ready') return; // placeholder or offline model: loudness rule stays in charge
+    if (isFalseAlarmRef.current || isTrappedRef.current || !sensorsActiveRef.current) {
+      crashStreakRef.current = 0;
+      return;
+    }
+    // Only a real sound event may count: after the warm up, loud enough, and clearly louder than the
+    // room was a moment ago. Silence or steady noise resets the streak.
+    const isSoundEvent = pred.windowsSeen > CNN_WARMUP_WINDOWS
+      && pred.rmsDb >= CNN_MIN_DB
+      && pred.ambientDb !== null
+      && pred.rmsDb >= pred.ambientDb + CNN_ABOVE_AMBIENT_DB
+      && pred.peakDb >= pred.ambientDb + CNN_PEAK_ABOVE_AMBIENT_DB;
+    if (!isSoundEvent) {
+      crashStreakRef.current = 0;
+      return;
+    }
+    crashStreakRef.current = pred.crashProb > 0.7 ? crashStreakRef.current + 1 : 0;
+    const twoInARow = crashStreakRef.current >= 2;
+    const crashWithMotion = pred.crashProb > 0.5 && lastMotionSpikeRef.current > 0
+      && nowMs() - lastMotionSpikeRef.current < 2000;
+    if (twoInARow || crashWithMotion) {
+      crashStreakRef.current = 0;
       triggerFalseAlarm();
     }
   };
@@ -155,7 +221,12 @@ export default function VictimUI() {
       motionGranted = true; 
     }
 
-    if (motionGranted) window.addEventListener('devicemotion', handleMotion);
+    if (motionGranted) {
+      motionStartRef.current = nowMs();
+      lastAccRef.current = { x: null, y: null, z: null };
+      motionSourceRef.current = null;
+      window.addEventListener('devicemotion', handleMotion);
+    }
 
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioCtxRef.current = new AudioContext();
@@ -181,6 +252,23 @@ export default function VictimUI() {
       const source = audioCtxRef.current.createMediaStreamSource(stream);
       source.connect(analyser);
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      // Start the crash sound CNN on the same mic stream. If it cannot load, the old loudness rule is used.
+      cnnModeRef.current = 'loading';
+      setCnnMode('loading');
+      createCrashDetector({ audioContext: audioCtxRef.current, sourceNode: source, onPrediction: handleCnnPrediction })
+        .then((detector) => {
+          detectorRef.current = detector;
+          // A placeholder model trained on synthetic audio is shown on screen but is not allowed to trigger alerts.
+          const mode = detector.synthetic ? 'test' : 'ready';
+          cnnModeRef.current = mode;
+          setCnnMode(mode);
+        })
+        .catch((err) => {
+          console.error("Crash sound model failed to load, using loudness rule:", err);
+          cnnModeRef.current = 'offline';
+          setCnnMode('offline');
+        });
       
       const updateAudio = () => {
         analyser.getByteFrequencyData(dataArray);
@@ -190,7 +278,9 @@ export default function VictimUI() {
         currentAudioRef.current = currentDB;
         setAudioDB(currentDB);
         
-        if (currentDB > audioThreshRef.current && !isFalseAlarmRef.current && !isTrappedRef.current && sensorsActiveRef.current) {
+        // Old loudness rule: now only a fallback while the CNN is not ready (loading, offline or placeholder model).
+        const useLoudnessRule = cnnModeRef.current !== 'ready';
+        if (useLoudnessRule && currentDB > audioThreshRef.current && !isFalseAlarmRef.current && !isTrappedRef.current && sensorsActiveRef.current) {
           triggerFalseAlarm();
         }
         requestAnimationFrame(updateAudio);
@@ -218,6 +308,7 @@ export default function VictimUI() {
   const triggerFalseAlarm = () => {
     if (isFalseAlarmRef.current || isTrappedRef.current || !sensorsActiveRef.current) return;
     isFalseAlarmRef.current = true;
+    cnnAtTriggerRef.current = cnnLatestRef.current;
     setFalseAlarmTimer(15);
     
     if (mediaRecorderRef.current?.state === "inactive") {
@@ -229,6 +320,7 @@ export default function VictimUI() {
 
   const cancelFalseAlarm = () => {
     isFalseAlarmRef.current = false;
+    cnnAtTriggerRef.current = null;
     setFalseAlarmTimer(null);
     if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
     try { recognitionRef.current?.stop(); } catch(e) {}
@@ -312,6 +404,11 @@ export default function VictimUI() {
 
     const finalAudioBase64 = isLowBandwidth ? "" : await getProcessedAudio();
 
+    // Result of the team trained CNN: the prediction that was live when the countdown started,
+    // or the newest one for a manual SOS.
+    const cnn = cnnAtTriggerRef.current || cnnLatestRef.current;
+    detectorRef.current?.stop();
+
     const payload = { 
         victimName: deviceId,
         status: "TRAPPED", 
@@ -323,7 +420,10 @@ export default function VictimUI() {
         aiTriage: "Pending...",
         transcript: transcriptRef.current || "No words captured.",
         audioDB: audioDB.toFixed(1),
-        motionMS2: motionMS2.toFixed(2)
+        motionMS2: motionMS2.toFixed(2),
+        cnnLabel: cnn ? cnn.label : (cnnModeRef.current === 'offline' ? "model_offline" : "no_prediction"),
+        cnnConfidence: cnn ? Number(cnn.confidence.toFixed(3)) : null,
+        modelVersion: cnn ? cnn.modelVersion : (detectorRef.current?.modelVersion || "none")
     };
 
     if (photoData) payload.photoBase64 = photoData;
@@ -409,6 +509,21 @@ export default function VictimUI() {
                     <polyline points={audioHistory.map((val, i) => `${(i / (audioHistory.length - 1)) * 100},${val}`).join(" ")} fill="none" stroke="#f87171" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
                 </svg>
             </div>
+            {/* Live result of the team trained crash sound CNN */}
+            {cnnMode !== 'idle' && (
+              <div className="text-[10px] font-mono leading-tight">
+                {cnnMode === 'offline' ? (
+                  <span className="text-amber-400 font-bold">AI model offline (loudness rule active)</span>
+                ) : cnnMode === 'loading' ? (
+                  <span className="text-slate-400">AI model loading...</span>
+                ) : (
+                  <span className={cnnView?.label === 'crash' ? 'text-red-400 font-bold' : 'text-emerald-400'}>
+                    {cnnMode === 'test' ? 'TEST MODEL: ' : 'AI: '}
+                    {cnnView ? `${cnnView.label} ${(cnnView.confidence * 100).toFixed(0)}%` : 'listening...'}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

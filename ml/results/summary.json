@@ -1,0 +1,26 @@
+{
+ "tag": "base",
+ "synthetic": false,
+ "macro_f1_mean": 0.502702423810549,
+ "macro_f1_std": 0.023598798882153025,
+ "best_epochs": [
+  27,
+  16,
+  5,
+  10
+ ],
+ "args": {
+  "epochs": 60,
+  "batch": 64,
+  "width": 16,
+  "dropout": 0.25,
+  "lr": 0.001,
+  "no_specaug": false,
+  "tag": "base",
+  "smoke": false,
+  "skip_final": false,
+  "data": "D:\\Zaids Work\\PulseTrack\\ml\\data\\windows.npz",
+  "out": null
+ },
+ "n_params": 79700
+}
